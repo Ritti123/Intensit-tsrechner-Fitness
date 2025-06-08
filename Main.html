@@ -1,3 +1,141 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Arbeitszeiterfassung</title>
+  <style>
+    body { font-family: Arial; margin: 20px; }
+    input, select, button { margin: 5px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #aaa; padding: 8px; text-align: left; }
+    .summary { margin-top: 10px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>Arbeitszeiterfassung</h2>
+
+  <label>Datum: <input type="date" id="datum"></label>
+  <label>Kommen: <input type="time" id="kommen"></label>
+  <label>Gehen: <input type="time" id="gehen"></label>
+  <label>Pausen (Minuten): <input type="number" id="pause" value="30"></label>
+  <label>Typ:
+    <select id="typ">
+      <option value="Arbeit">Arbeit</option>
+      <option value="Urlaub">Urlaub</option>
+      <option value="Feiertag">Feiertag</option>
+      <option value="Überstundenfrei">Überstundenfrei</option>
+    </select>
+  </label>
+  <label>Sollstunden: <input type="number" id="sollstunden" step="0.25" value="8"></label>
+  <button onclick="eintragSpeichern()">Eintragen</button>
+
+  <br>
+  <label>Monat filtern: <input type="month" id="monatFilter" onchange="anzeigen()"></label>
+  <button onclick="resetFilter()">Alle anzeigen</button>
+  <button onclick="exportierePDF()">PDF Export</button>
+  <button onclick="backupExport()">Backup Export</button>
+  <input type="file" id="importFile" accept=".json" onchange="backupImport(event)">
+  <button onclick="document.getElementById('importFile').click()">Backup Import</button>
+
+  <table id="tabelle">
+    <thead>
+      <tr>
+        <th>Datum</th><th>Kommen</th><th>Gehen</th><th>Pause (min)</th><th>Typ</th><th>Soll</th><th>Ist</th><th>Aktion</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div class="summary" id="summen"></div>
+
+<script>
+let eintraege = JSON.parse(localStorage.getItem('arbeitszeiten') || '[]');
+
+function eintragSpeichern() {
+  const datum = document.getElementById("datum").value;
+  const kommen = document.getElementById("kommen").value;
+  const gehen = document.getElementById("gehen").value;
+  const pause = parseInt(document.getElementById("pause").value) || 0;
+  const typ = document.getElementById("typ").value;
+  const sollstunden = parseFloat(document.getElementById("sollstunden").value) || 0;
+
+  if (!datum || !kommen || !gehen) return alert("Bitte alle Felder ausfüllen");
+
+  const ist = berechneIstStunden(kommen, gehen, pause);
+  const eintrag = { datum, kommen, gehen, pause, typ, sollstunden, ist };
+
+  const index = eintraege.findIndex(e => e.datum === datum);
+  if (index >= 0) eintraege[index] = eintrag;
+  else eintraege.push(eintrag);
+
+  localStorage.setItem('arbeitszeiten', JSON.stringify(eintraege));
+  anzeigen();
+}
+
+function berechneIstStunden(kommen, gehen, pause) {
+  const [kh, km] = kommen.split(":").map(Number);
+  const [gh, gm] = gehen.split(":").map(Number);
+  const start = kh * 60 + km;
+  const end = gh * 60 + gm;
+  const diff = end - start - pause;
+  return Math.max(0, (diff / 60).toFixed(2));
+}
+
+function anzeigen() {
+  const tbody = document.querySelector("#tabelle tbody");
+  tbody.innerHTML = "";
+  const monat = document.getElementById("monatFilter").value;
+  let sollSumme = 0, istSumme = 0, ueberstunden = 0;
+
+  eintraege
+    .filter(e => !monat || e.datum.startsWith(monat))
+    .sort((a, b) => a.datum.localeCompare(b.datum))
+    .forEach(e => {
+      const row = tbody.insertRow();
+      row.innerHTML = `
+        <td>${e.datum}</td>
+        <td>${e.kommen}</td>
+        <td>${e.gehen}</td>
+        <td>${e.pause}</td>
+        <td>${e.typ}</td>
+        <td>${e.sollstunden}</td>
+        <td>${e.ist}</td>
+        <td>
+          <button onclick="bearbeiten('${e.datum}')">Bearbeiten</button>
+          <button onclick="loeschen('${e.datum}')">Löschen</button>
+        </td>
+      `;
+      sollSumme += parseFloat(e.sollstunden);
+      istSumme += parseFloat(e.ist);
+    });
+
+  ueberstunden = istSumme - sollSumme;
+
+  document.getElementById("summen").innerText =
+    `Summe Soll: ${sollSumme.toFixed(2)} h | Summe Ist: ${istSumme.toFixed(2)} h | Überstunden: ${ueberstunden.toFixed(2)} h`;
+}
+
+function bearbeiten(datum) {
+  const e = eintraege.find(e => e.datum === datum);
+  document.getElementById("datum").value = e.datum;
+  document.getElementById("kommen").value = e.kommen;
+  document.getElementById("gehen").value = e.gehen;
+  document.getElementById("pause").value = e.pause;
+  document.getElementById("typ").value = e.typ;
+  document.getElementById("sollstunden").value = e.sollstunden;
+}
+
+function loeschen(datum) {
+  if (!confirm("Eintrag löschen?")) return;
+  eintraege = eintraege.filter(e => e.datum !== datum);
+  localStorage.setItem('arbeitszeiten', JSON.stringify(eintraege));
+  anzeigen();
+}
+
+function resetFilter() {
+  document.getElementById("monatFilter").value = "";
+  anzeigen();
+}
 function exportierePDF() {
   const monat = document.getElementById("monatFilter").value;
   const daten = eintraege.filter(e => !monat || e.datum.startsWith(monat));
