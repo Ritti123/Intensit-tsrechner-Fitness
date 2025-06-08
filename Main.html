@@ -1,0 +1,63 @@
+function exportierePDF() {
+  const monat = document.getElementById("monatFilter").value;
+  const daten = eintraege.filter(e => !monat || e.datum.startsWith(monat));
+  if (daten.length === 0) return alert("Keine Daten für diesen Monat.");
+
+  let inhalt = `
+    <h2>Arbeitszeiterfassung ${monat}</h2>
+    <table border="1" cellspacing="0" cellpadding="5">
+      <tr><th>Datum</th><th>Kommen</th><th>Gehen</th><th>Pause</th><th>Typ</th><th>Soll</th><th>Ist</th></tr>
+      ${daten.map(e => `
+        <tr>
+          <td>${e.datum}</td><td>${e.kommen}</td><td>${e.gehen}</td><td>${e.pause}</td>
+          <td>${e.typ}</td><td>${e.sollstunden}</td><td>${e.ist}</td>
+        </tr>`).join("")}
+    </table>
+  `;
+
+  const soll = daten.reduce((sum, e) => sum + parseFloat(e.sollstunden), 0);
+  const ist = daten.reduce((sum, e) => sum + parseFloat(e.ist), 0);
+  const ueber = ist - soll;
+
+  inhalt += `<p><strong>Summe Soll:</strong> ${soll.toFixed(2)} h<br>
+             <strong>Summe Ist:</strong> ${ist.toFixed(2)} h<br>
+             <strong>Überstunden:</strong> ${ueber.toFixed(2)} h</p>`;
+
+  const win = window.open("", "_blank");
+  win.document.write(`<html><head><title>PDF Export</title></head><body>${inhalt}</body></html>`);
+  win.document.close();
+  win.print();
+}
+
+function backupExport() {
+  const blob = new Blob([JSON.stringify(eintraege, null, 2)], { type: "application/json" });
+  const now = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 16);
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `Arbeitszeit-Backup-${now}.json`;
+  link.click();
+}
+
+function backupImport(event) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (Array.isArray(data)) {
+        eintraege = data;
+        localStorage.setItem("arbeitszeiten", JSON.stringify(eintraege));
+        anzeigen();
+      } else {
+        alert("Ungültiges Backup.");
+      }
+    } catch (err) {
+      alert("Fehler beim Import.");
+    }
+  };
+  reader.readAsText(event.target.files[0]);
+}
+
+window.onload = anzeigen;
+</script>
+</body>
+</html>
